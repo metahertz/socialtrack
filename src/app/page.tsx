@@ -1,0 +1,150 @@
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
+import { LinkedInUpload } from "@/components/LinkedInUpload";
+import { LinkedInImportPreview } from "@/components/LinkedInImportPreview";
+import { aggregatePlatforms } from "@/lib/aggregate";
+import { useLinkedInData } from "@/hooks/useLinkedInData";
+import type { Platform } from "@/types/social";
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  linkedin: "LinkedIn",
+  twitter: "Twitter (X)",
+  youtube: "YouTube",
+};
+
+export default function Home() {
+  const {
+    linkedInMetrics,
+    stored,
+    error,
+    isLoading,
+    pendingImport,
+    handleFile,
+    approveImport,
+    rejectImport,
+    clear,
+  } = useLinkedInData();
+
+  const platformsForChart = linkedInMetrics ? [linkedInMetrics] : [];
+  const availablePlatforms = platformsForChart.map((p) => p.platform);
+  const [selected, setSelected] = useState<Set<Platform>>(
+    () => new Set(availablePlatforms)
+  );
+
+  useEffect(() => {
+    if (availablePlatforms.length > 0) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const id of availablePlatforms) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
+  }, [availablePlatforms.join(",")]);
+
+  const handleLinkedInFile = useCallback(
+    (file: File) => handleFile(file),
+    [handleFile]
+  );
+
+  const toggle = (id: Platform) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const data = aggregatePlatforms(
+    platformsForChart,
+    Array.from(selected)
+  );
+
+  const selectedLabels =
+    selected.size === availablePlatforms.length && availablePlatforms.length > 1
+      ? "All platforms"
+      : availablePlatforms
+          .filter((id) => selected.has(id))
+          .map((id) => PLATFORM_LABELS[id])
+          .join(", ");
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-12">
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold text-chart-green">
+          SocialTrack
+        </h1>
+        <p className="mt-1 text-chart-green/70">
+          Follower growth & cumulative impressions across your social channels
+        </p>
+      </header>
+
+      <div className="mb-6">
+        <LinkedInUpload
+          onFile={handleLinkedInFile}
+          isLoading={isLoading}
+          error={error}
+          storedPostCount={stored?.posts?.length ?? null}
+          lastImportedAt={stored?.lastImportedAt ?? null}
+          onClear={clear}
+        />
+        {pendingImport && (
+          <div className="mt-4">
+            <LinkedInImportPreview
+              pending={pendingImport}
+              onApprove={approveImport}
+              onReject={rejectImport}
+            />
+          </div>
+        )}
+      </div>
+
+      {availablePlatforms.length > 1 && (
+        <div className="mb-6 flex flex-wrap gap-3">
+          {availablePlatforms.map((id) => (
+            <button
+              key={id}
+              onClick={() => toggle(id)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                selected.has(id)
+                  ? "bg-chart-green text-chart-dark"
+                  : "bg-chart-dark-card text-chart-green/70 hover:bg-chart-dark-grid hover:text-chart-green"
+              }`}
+            >
+              {PLATFORM_LABELS[id]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {data.length > 0 ? (
+        <>
+          <SocialPerformanceChart
+            data={data}
+            title={`Follower Growth & Cumulative Impressions — ${selectedLabels}`}
+          />
+          <p className="mt-6 text-center text-sm text-chart-green/50">
+            Upload LinkedIn exports regularly to merge new metrics; duplicates are
+            merged by post and date.
+          </p>
+        </>
+      ) : (
+        <p className="rounded-xl border border-chart-dark-grid bg-chart-dark-card p-8 text-center text-chart-green/70">
+          No data yet. Upload your LinkedIn Creator Analytics export above to get
+          started.
+        </p>
+      )}
+    </main>
+  );
+}

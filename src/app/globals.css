@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --chart-green: #6ee7b7;
+  --chart-dark: #0f1f1a;
+  --chart-dark-card: #1c302b;
+}
+
+body {
+  background-color: var(--chart-dark);
+  color: #e5e7eb;
+}
