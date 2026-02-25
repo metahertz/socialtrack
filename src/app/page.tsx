@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
 import { LinkedInUpload } from "@/components/LinkedInUpload";
 import { LinkedInImportPreview } from "@/components/LinkedInImportPreview";
 import { YouTubeUpload } from "@/components/YouTubeUpload";
 import { YouTubeImportPreview } from "@/components/YouTubeImportPreview";
-import { aggregatePlatforms } from "@/lib/aggregate";
+import { aggregatePlatforms, getDateRangeLabel } from "@/lib/aggregate";
 import { useLinkedInData } from "@/hooks/useLinkedInData";
 import { useYouTubeData } from "@/hooks/useYouTubeData";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Platform } from "@/types/social";
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -18,6 +20,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 };
 
 export default function Home() {
+  const { user, isLoading: authLoading, logout } = useAuth();
   const {
     linkedInMetrics,
     stored,
@@ -98,15 +101,59 @@ export default function Home() {
       ? aggregatePlatforms([youtubeMetrics], ["youtube"])
       : [];
 
+  if (authLoading) {
+    return (
+      <main className="mx-auto flex max-w-6xl items-center justify-center px-4 py-24">
+        <p className="text-chart-green/70">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="mx-auto flex max-w-6xl flex-col items-center justify-center px-4 py-24">
+        <h1 className="text-3xl font-bold text-chart-green">SocialTrack</h1>
+        <p className="mt-2 text-chart-green/70">
+          Sign in to track your social media performance
+        </p>
+        <div className="mt-6 flex gap-4">
+          <Link
+            href="/login"
+            className="rounded-lg bg-chart-green px-4 py-2 font-medium text-chart-dark hover:opacity-90"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/signup"
+            className="rounded-lg border border-chart-green px-4 py-2 font-medium text-chart-green hover:bg-chart-dark-card"
+          >
+            Sign up
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-12">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-chart-green">
-          SocialTrack
-        </h1>
-        <p className="mt-1 text-chart-green/70">
-          Follower growth & cumulative impressions across your social channels
-        </p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-chart-green">
+            SocialTrack
+          </h1>
+          <p className="mt-1 text-chart-green/70">
+            Follower growth & cumulative impressions across your social channels
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-chart-green/70">{user.email}</span>
+          <button
+            onClick={() => logout()}
+            className="rounded-lg border border-chart-dark-grid px-3 py-1.5 text-sm text-chart-green/80 hover:bg-chart-dark-card"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="mb-6 space-y-4">
@@ -115,7 +162,16 @@ export default function Home() {
           isLoading={isLoading}
           error={error}
           storedPostCount={stored?.posts?.length ?? null}
-          lastImportedAt={stored?.lastImportedAt ?? null}
+          storedDateRange={
+            stored?.dailyImpressions?.length || stored?.posts?.length
+              ? getDateRangeLabel(
+                  [...new Set([
+                    ...(stored.dailyImpressions?.map((d) => d.date) ?? []),
+                    ...(stored.posts?.map((p) => p.date) ?? []),
+                  ])].sort()
+                )
+              : null
+          }
           onClear={clear}
         />
         {pendingImport && (
@@ -130,7 +186,13 @@ export default function Home() {
           isLoading={youtubeIsLoading}
           error={youtubeError}
           storedDayCount={youtubeStored?.dailyData?.length ?? null}
-          lastImportedAt={youtubeStored?.lastImportedAt ?? null}
+          storedDateRange={
+            youtubeStored?.dailyData?.length
+              ? getDateRangeLabel(
+                  youtubeStored.dailyData.map((d) => d.date)
+                )
+              : null
+          }
           onClear={clearYouTube}
         />
         {youtubePendingImport && (

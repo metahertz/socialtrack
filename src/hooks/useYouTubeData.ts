@@ -22,28 +22,34 @@ export interface PendingYouTubeImport {
 }
 
 export function useYouTubeData() {
-  const [stored, setStored] = useState(loadYouTubeData());
+  const [stored, setStored] = useState<import("@/lib/youtubeImport").StoredYouTubeData | null>(null);
   const [youtubeMetrics, setYoutubeMetrics] = useState<PlatformMetrics | null>(
     null
   );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingStorage, setIsLoadingStorage] = useState(true);
   const [pendingImport, setPendingImport] = useState<PendingYouTubeImport | null>(null);
 
-  const refreshFromStorage = useCallback(() => {
-    const data = loadYouTubeData();
-    setStored(data);
-    if (data?.dailyData?.length) {
-      setYoutubeMetrics(
-        toPlatformMetrics(
-          data.dailyData,
-          data.channelName ?? CHANNEL_NAME,
-          data.videos ?? [],
-          data.chartVideos ?? []
-        )
-      );
-    } else {
-      setYoutubeMetrics(null);
+  const refreshFromStorage = useCallback(async () => {
+    setIsLoadingStorage(true);
+    try {
+      const data = await loadYouTubeData();
+      setStored(data);
+      if (data?.dailyData?.length) {
+        setYoutubeMetrics(
+          toPlatformMetrics(
+            data.dailyData,
+            data.channelName ?? CHANNEL_NAME,
+            data.videos ?? [],
+            data.chartVideos ?? []
+          )
+        );
+      } else {
+        setYoutubeMetrics(null);
+      }
+    } finally {
+      setIsLoadingStorage(false);
     }
   }, []);
 
@@ -87,39 +93,49 @@ export function useYouTubeData() {
     []
   );
 
-  const approveImport = useCallback(() => {
+  const approveImport = useCallback(async () => {
     if (!pendingImport) return;
-    const merged = mergeAndSaveYouTube(
-      stored,
-      {
-        dailyData: pendingImport.dailyData,
-        videos: pendingImport.videos,
-        chartVideos: pendingImport.chartVideos,
-      },
-      CHANNEL_NAME
-    );
-    setStored(merged);
-    setYoutubeMetrics(
-      toPlatformMetrics(
-        merged.dailyData,
-        merged.channelName ?? CHANNEL_NAME,
-        merged.videos ?? [],
-        merged.chartVideos ?? []
-      )
-    );
-    setPendingImport(null);
+    setIsLoading(true);
+    try {
+      const merged = await mergeAndSaveYouTube(
+        stored,
+        {
+          dailyData: pendingImport.dailyData,
+          videos: pendingImport.videos,
+          chartVideos: pendingImport.chartVideos,
+        },
+        CHANNEL_NAME
+      );
+      setStored(merged);
+      setYoutubeMetrics(
+        toPlatformMetrics(
+          merged.dailyData,
+          merged.channelName ?? CHANNEL_NAME,
+          merged.videos ?? [],
+          merged.chartVideos ?? []
+        )
+      );
+      setPendingImport(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [pendingImport, stored]);
 
   const rejectImport = useCallback(() => {
     setPendingImport(null);
   }, []);
 
-  const clear = useCallback(() => {
-    clearYouTubeData();
-    setStored(null);
-    setYoutubeMetrics(null);
-    setError(null);
-    setPendingImport(null);
+  const clear = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await clearYouTubeData();
+      setStored(null);
+      setYoutubeMetrics(null);
+      setError(null);
+      setPendingImport(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   return {
@@ -127,6 +143,7 @@ export function useYouTubeData() {
     stored,
     error,
     isLoading,
+    isLoadingStorage,
     pendingImport,
     handleFile,
     approveImport,

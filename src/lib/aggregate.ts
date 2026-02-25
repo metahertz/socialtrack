@@ -93,15 +93,16 @@ export function aggregatePlatforms(
 }
 
 /**
- * Get date range label (e.g. "Feb 2026")
+ * Get date range label from the data (e.g. "May 2022 – Feb 2026" or "Feb 2026" if single month)
  */
 export function getDateRangeLabel(dates: string[]): string {
   if (dates.length === 0) return "";
   const first = new Date(dates[0]);
   const last = new Date(dates[dates.length - 1]);
-  const month = first.toLocaleString("default", { month: "short" });
-  const year = first.getFullYear();
-  return `${month} ${year}`;
+  const firstStr = `${first.toLocaleString("default", { month: "short" })} ${first.getFullYear()}`;
+  const lastStr = `${last.toLocaleString("default", { month: "short" })} ${last.getFullYear()}`;
+  if (firstStr === lastStr) return firstStr;
+  return `${firstStr} – ${lastStr}`;
 }
 
 /**

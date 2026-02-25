@@ -1,7 +1,7 @@
 "use client";
 
 import type { PendingYouTubeImport } from "@/hooks/useYouTubeData";
-import { formatCompact } from "@/lib/aggregate";
+import { formatCompact, getDateRangeLabel } from "@/lib/aggregate";
 
 interface YouTubeImportPreviewProps {
   pending: PendingYouTubeImport;
@@ -58,7 +58,7 @@ export function YouTubeImportPreview({
           <span className="text-chart-green/90">
             Date range:{" "}
             <strong className="text-chart-green">
-              {sorted[sorted.length - 1]?.date} → {sorted[0]?.date}
+              {getDateRangeLabel(dailyData.map((d) => d.date))}
             </strong>
           </span>
         )}

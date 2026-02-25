@@ -1,7 +1,7 @@
 "use client";
 
 import type { PendingImport } from "@/hooks/useLinkedInData";
-import { formatCompact } from "@/lib/aggregate";
+import { formatCompact, getDateRangeLabel } from "@/lib/aggregate";
 
 interface LinkedInImportPreviewProps {
   pending: PendingImport;
@@ -11,12 +11,25 @@ interface LinkedInImportPreviewProps {
 
 const MAX_PREVIEW_ROWS = 50;
 
+function dateRangeFromData(
+  dailyImpressions: { date: string }[],
+  posts: { date: string }[]
+): string {
+  const dates = [
+    ...dailyImpressions.map((d) => d.date),
+    ...posts.map((p) => p.date),
+  ];
+  const unique = [...new Set(dates)].sort();
+  return getDateRangeLabel(unique);
+}
+
 export function LinkedInImportPreview({
   pending,
   onApprove,
   onReject,
 }: LinkedInImportPreviewProps) {
-  const { filename, dailyImpressions, posts, followersByDate, dateRange } = pending;
+  const { filename, dailyImpressions, posts, followersByDate } = pending;
+  const dateRangeLabel = dateRangeFromData(dailyImpressions, posts);
   const totalImpressions = dailyImpressions.reduce((sum, d) => sum + d.impressions, 0);
   const followerCount = followersByDate.size;
   const sortedPosts = [...posts].sort(
@@ -55,12 +68,10 @@ export function LinkedInImportPreview({
             data point{followerCount !== 1 ? "s" : ""}
           </span>
         )}
-        {dateRange && (
+        {dateRangeLabel && (
           <span className="text-chart-green/90">
             Date range:{" "}
-            <strong className="text-chart-green">
-              {dateRange.start} → {dateRange.end}
-            </strong>
+            <strong className="text-chart-green">{dateRangeLabel}</strong>
           </span>
         )}
       </div>

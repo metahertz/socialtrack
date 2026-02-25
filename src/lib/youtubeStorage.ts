@@ -8,17 +8,14 @@ import {
   mergeYouTubeChartVideos,
 } from "./youtubeImport";
 
-const STORAGE_KEY = "socialtrack_youtube_data";
-
-export function loadYouTubeData(): StoredYouTubeData | null {
-  if (typeof window === "undefined") return null;
+/** Load from API (MongoDB) when authenticated */
+export async function loadYouTubeData(): Promise<StoredYouTubeData | null> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredYouTubeData & {
-      videos?: YouTubeVideoRow[];
-      chartVideos?: YouTubeChartVideoRow[];
-    };
+    const res = await fetch("/api/youtube", { credentials: "include" });
+    if (res.status === 401) return null;
+    if (!res.ok) return null;
+    const json = await res.json();
+    const parsed = json.data;
     if (parsed?.platform === "youtube" && Array.isArray(parsed.dailyData)) {
       return {
         ...parsed,
@@ -26,22 +23,28 @@ export function loadYouTubeData(): StoredYouTubeData | null {
         chartVideos: parsed.chartVideos ?? [],
       };
     }
+    return null;
   } catch {
-    // ignore
+    return null;
   }
-  return null;
 }
 
-export function saveYouTubeData(data: StoredYouTubeData): void {
-  if (typeof window === "undefined") return;
+/** Save to API (MongoDB) when authenticated */
+export async function saveYouTubeData(data: StoredYouTubeData): Promise<boolean> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const res = await fetch("/api/youtube", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "include",
+    });
+    return res.ok;
   } catch {
-    // ignore
+    return false;
   }
 }
 
-export function mergeAndSaveYouTube(
+export async function mergeAndSaveYouTube(
   existing: StoredYouTubeData | null,
   incoming: {
     dailyData: YouTubeDailyRow[];
@@ -49,7 +52,7 @@ export function mergeAndSaveYouTube(
     chartVideos: YouTubeChartVideoRow[];
   },
   channelName = "VimandTonic"
-): StoredYouTubeData {
+): Promise<StoredYouTubeData> {
   const prevDaily = existing?.dailyData ?? [];
   const prevVideos = existing?.videos ?? [];
   const prevChartVideos = existing?.chartVideos ?? [];
@@ -67,15 +70,19 @@ export function mergeAndSaveYouTube(
     channelName,
     lastImportedAt: new Date().toISOString(),
   };
-  saveYouTubeData(result);
+  await saveYouTubeData(result);
   return result;
 }
 
-export function clearYouTubeData(): void {
-  if (typeof window === "undefined") return;
+/** Clear from API (MongoDB) when authenticated */
+export async function clearYouTubeData(): Promise<boolean> {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    const res = await fetch("/api/youtube", {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
   } catch {
-    // ignore
+    return false;
   }
 }

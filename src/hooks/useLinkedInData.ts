@@ -19,40 +19,32 @@ export interface PendingImport {
   dailyImpressions: import("@/lib/linkedinImport").DailyImpressionsRow[];
   posts: LinkedInPostRow[];
   followersByDate: Map<string, number>;
-  dateRange?: { start: string; end: string };
-}
-
-function extractDateRangeFromFilename(filename: string): {
-  start?: string;
-  end?: string;
-} | undefined {
-  const match = filename.match(
-    /(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/
-  );
-  if (match) {
-    return { start: match[1], end: match[2] };
-  }
-  return undefined;
 }
 
 export function useLinkedInData() {
-  const [stored, setStored] = useState(loadLinkedInData());
+  const [stored, setStored] = useState<import("@/lib/linkedinImport").StoredLinkedInData | null>(null);
   const [linkedInMetrics, setLinkedInMetrics] = useState<PlatformMetrics | null>(
     null
   );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingStorage, setIsLoadingStorage] = useState(true);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
 
-  const refreshFromStorage = useCallback(() => {
-    const data = loadLinkedInData();
-    setStored(data);
-    if (data?.dailyImpressions?.length || data?.posts?.length) {
-      setLinkedInMetrics(
-        toPlatformMetrics(data.dailyImpressions, data.posts, data.followersByDate)
-      );
-    } else {
-      setLinkedInMetrics(null);
+  const refreshFromStorage = useCallback(async () => {
+    setIsLoadingStorage(true);
+    try {
+      const data = await loadLinkedInData();
+      setStored(data);
+      if (data?.dailyImpressions?.length || data?.posts?.length) {
+        setLinkedInMetrics(
+          toPlatformMetrics(data.dailyImpressions, data.posts, data.followersByDate)
+        );
+      } else {
+        setLinkedInMetrics(null);
+      }
+    } finally {
+      setIsLoadingStorage(false);
     }
   }, []);
 
@@ -78,16 +70,12 @@ export function useLinkedInData() {
         });
 
         const { dailyImpressions, posts, followersByDate } = parseLinkedInWorkbook(sheets);
-        const range = extractDateRangeFromFilename(file.name);
-        const dateRange =
-          range?.start && range?.end ? { start: range.start, end: range.end } : undefined;
 
         setPendingImport({
           filename: file.name,
           dailyImpressions,
           posts,
           followersByDate,
-          dateRange,
         });
       } catch (e) {
         setError(
@@ -100,34 +88,40 @@ export function useLinkedInData() {
     []
   );
 
-  const approveImport = useCallback(() => {
+  const approveImport = useCallback(async () => {
     if (!pendingImport) return;
-    const merged = mergeAndSave(
-      stored,
-      {
+    setIsLoading(true);
+    try {
+      const merged = await mergeAndSave(stored, {
         dailyImpressions: pendingImport.dailyImpressions,
         posts: pendingImport.posts,
         followersByDate: pendingImport.followersByDate,
-      },
-      pendingImport.dateRange
-    );
-    setStored(merged);
-    setLinkedInMetrics(
-      toPlatformMetrics(merged.dailyImpressions, merged.posts, merged.followersByDate)
-    );
-    setPendingImport(null);
+      });
+      setStored(merged);
+      setLinkedInMetrics(
+        toPlatformMetrics(merged.dailyImpressions, merged.posts, merged.followersByDate)
+      );
+      setPendingImport(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [pendingImport, stored]);
 
   const rejectImport = useCallback(() => {
     setPendingImport(null);
   }, []);
 
-  const clear = useCallback(() => {
-    clearLinkedInData();
-    setStored(null);
-    setLinkedInMetrics(null);
-    setError(null);
-    setPendingImport(null);
+  const clear = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await clearLinkedInData();
+      setStored(null);
+      setLinkedInMetrics(null);
+      setError(null);
+      setPendingImport(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   return {
@@ -135,6 +129,7 @@ export function useLinkedInData() {
     stored,
     error,
     isLoading,
+    isLoadingStorage,
     pendingImport,
     handleFile,
     approveImport,

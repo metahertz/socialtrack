@@ -87,6 +87,12 @@ function findColumnContains(
   return null;
 }
 
+/**
+ * Parse date from LinkedIn export. Handles:
+ * - ISO YYYY-MM-DD
+ * - US format mm/dd/yyyy (e.g. 05/22/2024 = May 22, 2024)
+ * - Excel serial numbers (days since 1900-01-01)
+ */
 function parseDate(val: unknown): string | null {
   if (!val) return null;
   if (typeof val === "string") {
@@ -97,20 +103,21 @@ function parseDate(val: unknown): string | null {
     if (isoMatch) {
       return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
     }
-    // M/D/YYYY or MM/DD/YYYY (LinkedIn TOP POSTS format)
+    // mm/dd/yyyy or m/d/yyyy (US format - LinkedIn exports)
     const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (slashMatch) {
-      const [, m, d, y] = slashMatch;
-      const month = m!.padStart(2, "0");
-      const day = d!.padStart(2, "0");
-      return `${y}-${month}-${day}`;
+      const [, month, day, year] = slashMatch;
+      return `${year}-${month!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
     }
     const d = new Date(trimmed);
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
   if (typeof val === "number" && val > 0) {
-    const d = new Date(val);
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    // Excel serial date (days since 1900-01-01)
+    if (val >= 1 && val <= 1000000) {
+      const d = new Date((val - 25569) * 86400000);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
   }
   return null;
 }

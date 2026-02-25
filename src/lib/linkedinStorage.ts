@@ -7,71 +7,78 @@ import {
   mergeFollowers,
 } from "./linkedinImport";
 
-const STORAGE_KEY = "socialtrack_linkedin_data";
-
-export function loadLinkedInData(): StoredLinkedInData | null {
-  if (typeof window === "undefined") return null;
+/** Load from API (MongoDB) when authenticated */
+export async function loadLinkedInData(): Promise<StoredLinkedInData | null> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredLinkedInData & {
-      dailyImpressions?: DailyImpressionsRow[];
-    };
-    if (parsed?.platform === "linkedin" && Array.isArray(parsed.posts)) {
-      const dailyImpressions = parsed.dailyImpressions ?? [];
-      return {
-        ...parsed,
-        dailyImpressions,
-        followersByDate: parsed.followersByDate ?? [],
-      };
-    }
+    const res = await fetch("/api/linkedin", { credentials: "include" });
+    if (res.status === 401) return null;
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data ?? null;
   } catch {
-    // ignore
-  }
-  return null;
-}
-
-export function saveLinkedInData(data: StoredLinkedInData): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // ignore
+    return null;
   }
 }
 
-export function mergeAndSave(
+/** Save to API (MongoDB) when authenticated */
+export async function saveLinkedInData(data: StoredLinkedInData): Promise<boolean> {
+  try {
+    const res = await fetch("/api/linkedin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function mergeAndSave(
   existing: StoredLinkedInData | null,
   incoming: {
     dailyImpressions: DailyImpressionsRow[];
     posts: LinkedInPostRow[];
     followersByDate: Map<string, number>;
-  },
-  exportDateRange?: { start: string; end: string }
-): StoredLinkedInData {
+  }
+): Promise<StoredLinkedInData> {
   const prevDaily = existing?.dailyImpressions ?? [];
   const prevPosts = existing?.posts ?? [];
   const prevFollowers = existing?.followersByDate ?? [];
   const mergedDaily = mergeDailyImpressions(prevDaily, incoming.dailyImpressions);
   const mergedPosts = mergeLinkedInPosts(prevPosts, incoming.posts);
   const mergedFollowers = mergeFollowers(prevFollowers, incoming.followersByDate);
+  const allDates = [
+    ...mergedDaily.map((d) => d.date),
+    ...mergedPosts.map((p) => p.date),
+  ];
+  const sortedDates = [...new Set(allDates)].sort();
+  const exportDateRange =
+    sortedDates.length > 0
+      ? { start: sortedDates[0], end: sortedDates[sortedDates.length - 1] }
+      : undefined;
   const result: StoredLinkedInData = {
     platform: "linkedin",
     dailyImpressions: mergedDaily,
     posts: mergedPosts,
     followersByDate: mergedFollowers,
     lastImportedAt: new Date().toISOString(),
-    exportDateRange: exportDateRange ?? existing?.exportDateRange,
+    exportDateRange,
   };
-  saveLinkedInData(result);
+  await saveLinkedInData(result);
   return result;
 }
 
-export function clearLinkedInData(): void {
-  if (typeof window === "undefined") return;
+/** Clear from API (MongoDB) when authenticated */
+export async function clearLinkedInData(): Promise<boolean> {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    const res = await fetch("/api/linkedin", {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return res.ok;
   } catch {
-    // ignore
+    return false;
   }
 }

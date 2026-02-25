@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { DbGuard } from "@/components/DbGuard";
 
 export const metadata: Metadata = {
   title: "SocialTrack - Social Media Performance",
@@ -14,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased min-h-screen bg-chart-dark">
-        {children}
+        <DbGuard>
+          <AuthProvider>{children}</AuthProvider>
+        </DbGuard>
       </body>
     </html>
   );

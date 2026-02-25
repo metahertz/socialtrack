@@ -7,7 +7,7 @@ interface YouTubeUploadProps {
   isLoading: boolean;
   error: string | null;
   storedDayCount: number | null;
-  lastImportedAt: string | null;
+  storedDateRange: string | null;
   onClear: () => void;
 }
 
@@ -16,7 +16,7 @@ export function YouTubeUpload({
   isLoading,
   error,
   storedDayCount,
-  lastImportedAt,
+  storedDateRange,
   onClear,
 }: YouTubeUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,17 +26,6 @@ export function YouTubeUpload({
     if (file) {
       onFile(file);
       e.target.value = "";
-    }
-  };
-
-  const formatDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-    } catch {
-      return iso;
     }
   };
 
@@ -69,8 +58,8 @@ export function YouTubeUpload({
           <>
             <span className="text-sm text-chart-green/80">
               {storedDayCount} day{storedDayCount !== 1 ? "s" : ""} stored
-              {lastImportedAt && (
-                <> · Last import {formatDate(lastImportedAt)}</>
+              {storedDateRange && (
+                <> · {storedDateRange}</>
               )}
             </span>
             <button

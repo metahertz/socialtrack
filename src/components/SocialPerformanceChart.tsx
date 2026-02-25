@@ -27,8 +27,9 @@ const VIDEO_COLORS = [
 ];
 
 function formatDate(d: string) {
-  const [_, m, day] = d.split("-");
-  return `${parseInt(m, 10)}/${parseInt(day, 10)}`;
+  const [y, m, day] = d.split("-");
+  if (!y || !m || !day) return d;
+  return `${parseInt(m, 10)}/${parseInt(day, 10)}/${y}`;
 }
 
 interface SocialPerformanceChartProps {
