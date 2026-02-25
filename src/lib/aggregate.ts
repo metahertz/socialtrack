@@ -68,13 +68,15 @@ export function aggregatePlatforms(
     let anyPost = false;
     let postsOnDate: PostOnDate[] | undefined;
 
+    const allPosts: PostOnDate[] = [];
     for (const platformMap of filled) {
       const row = platformMap.get(date)!;
       totalImpressions += row.impressions;
       totalFollowers += row.followers;
       anyPost = anyPost || row.postPublished;
-      if (row.postsOnDate?.length && !postsOnDate) postsOnDate = row.postsOnDate;
+      if (row.postsOnDate?.length) allPosts.push(...row.postsOnDate);
     }
+    if (allPosts.length > 0) postsOnDate = allPosts;
 
     cumulative += totalImpressions;
     result.push({
@@ -83,6 +85,7 @@ export function aggregatePlatforms(
       followers: totalFollowers,
       postPublished: anyPost,
       postsOnDate,
+      dailyImpressions: totalImpressions,
     });
   }
 

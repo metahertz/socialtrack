@@ -4,8 +4,11 @@ import { useState, useCallback, useEffect } from "react";
 import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
 import { LinkedInUpload } from "@/components/LinkedInUpload";
 import { LinkedInImportPreview } from "@/components/LinkedInImportPreview";
+import { YouTubeUpload } from "@/components/YouTubeUpload";
+import { YouTubeImportPreview } from "@/components/YouTubeImportPreview";
 import { aggregatePlatforms } from "@/lib/aggregate";
 import { useLinkedInData } from "@/hooks/useLinkedInData";
+import { useYouTubeData } from "@/hooks/useYouTubeData";
 import type { Platform } from "@/types/social";
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -27,7 +30,22 @@ export default function Home() {
     clear,
   } = useLinkedInData();
 
-  const platformsForChart = linkedInMetrics ? [linkedInMetrics] : [];
+  const {
+    youtubeMetrics,
+    stored: youtubeStored,
+    error: youtubeError,
+    isLoading: youtubeIsLoading,
+    pendingImport: youtubePendingImport,
+    handleFile: handleYouTubeFile,
+    approveImport: approveYouTubeImport,
+    rejectImport: rejectYouTubeImport,
+    clear: clearYouTube,
+  } = useYouTubeData();
+
+  const platformsForChart = [
+    ...(linkedInMetrics ? [linkedInMetrics] : []),
+    ...(youtubeMetrics ? [youtubeMetrics] : []),
+  ];
   const availablePlatforms = platformsForChart.map((p) => p.platform);
   const [selected, setSelected] = useState<Set<Platform>>(
     () => new Set(availablePlatforms)
@@ -54,6 +72,11 @@ export default function Home() {
     [handleFile]
   );
 
+  const handleYouTubeFileCb = useCallback(
+    (file: File) => handleYouTubeFile(file),
+    [handleYouTubeFile]
+  );
+
   const toggle = (id: Platform) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -66,18 +89,14 @@ export default function Home() {
     });
   };
 
-  const data = aggregatePlatforms(
-    platformsForChart,
-    Array.from(selected)
-  );
-
-  const selectedLabels =
-    selected.size === availablePlatforms.length && availablePlatforms.length > 1
-      ? "All platforms"
-      : availablePlatforms
-          .filter((id) => selected.has(id))
-          .map((id) => PLATFORM_LABELS[id])
-          .join(", ");
+  const linkedInData =
+    linkedInMetrics && selected.has("linkedin")
+      ? aggregatePlatforms([linkedInMetrics], ["linkedin"])
+      : [];
+  const youtubeData =
+    youtubeMetrics && selected.has("youtube")
+      ? aggregatePlatforms([youtubeMetrics], ["youtube"])
+      : [];
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-12">
@@ -90,7 +109,7 @@ export default function Home() {
         </p>
       </header>
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-4">
         <LinkedInUpload
           onFile={handleLinkedInFile}
           isLoading={isLoading}
@@ -100,13 +119,26 @@ export default function Home() {
           onClear={clear}
         />
         {pendingImport && (
-          <div className="mt-4">
-            <LinkedInImportPreview
-              pending={pendingImport}
-              onApprove={approveImport}
-              onReject={rejectImport}
-            />
-          </div>
+          <LinkedInImportPreview
+            pending={pendingImport}
+            onApprove={approveImport}
+            onReject={rejectImport}
+          />
+        )}
+        <YouTubeUpload
+          onFile={handleYouTubeFileCb}
+          isLoading={youtubeIsLoading}
+          error={youtubeError}
+          storedDayCount={youtubeStored?.dailyData?.length ?? null}
+          lastImportedAt={youtubeStored?.lastImportedAt ?? null}
+          onClear={clearYouTube}
+        />
+        {youtubePendingImport && (
+          <YouTubeImportPreview
+            pending={youtubePendingImport}
+            onApprove={approveYouTubeImport}
+            onReject={rejectYouTubeImport}
+          />
         )}
       </div>
 
@@ -128,21 +160,39 @@ export default function Home() {
         </div>
       )}
 
-      {data.length > 0 ? (
-        <>
+      {linkedInData.length > 0 && (
+        <div className="mb-10">
           <SocialPerformanceChart
-            data={data}
-            title={`Follower Growth & Cumulative Impressions — ${selectedLabels}`}
+            data={linkedInData}
+            platform="linkedin"
+            title="LinkedIn — Follower Growth & Cumulative Impressions"
           />
-          <p className="mt-6 text-center text-sm text-chart-green/50">
-            Upload LinkedIn exports regularly to merge new metrics; duplicates are
-            merged by post and date.
-          </p>
-        </>
-      ) : (
+        </div>
+      )}
+
+      {youtubeData.length > 0 && (
+        <div className="mb-10">
+          <SocialPerformanceChart
+            data={youtubeData}
+            platform="youtube"
+            title="YouTube — Cumulative Views per Video & Subscribers"
+            youtubeVideos={youtubeStored?.videos}
+            youtubeChartVideos={youtubeStored?.chartVideos}
+          />
+        </div>
+      )}
+
+      {linkedInData.length === 0 && youtubeData.length === 0 && (
         <p className="rounded-xl border border-chart-dark-grid bg-chart-dark-card p-8 text-center text-chart-green/70">
-          No data yet. Upload your LinkedIn Creator Analytics export above to get
-          started.
+          No data yet. Upload your LinkedIn Creator Analytics or YouTube Analytics
+          export above to get started.
+        </p>
+      )}
+
+      {(linkedInData.length > 0 || youtubeData.length > 0) && (
+        <p className="mt-6 text-center text-sm text-chart-green/50">
+          Upload exports regularly to merge new metrics; duplicates are merged by
+          post/date.
         </p>
       )}
     </main>

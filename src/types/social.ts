@@ -25,4 +25,6 @@ export interface AggregatedMetrics {
   followers: number;
   postPublished: boolean;
   postsOnDate?: PostOnDate[];
+  /** Daily views/impressions for this date (non-cumulative) */
+  dailyImpressions?: number;
 }
