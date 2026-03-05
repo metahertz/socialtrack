@@ -111,12 +111,47 @@ interface LinkedInPostsChartProps {
   onConfirmRepost?: (postId: string) => Promise<boolean>;
 }
 
+type SortKey = "rank" | "url" | "impressions" | "impressionsPct" | "followersPct" | "engagementRate";
+
+function SortHeader({
+  label,
+  sortKey,
+  currentSort,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  currentSort: SortKey | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+}) {
+  const isActive = currentSort === sortKey;
+  return (
+    <th
+      className="cursor-pointer select-none px-4 py-2 text-left font-medium text-chart-green/80 hover:bg-chart-dark-card/50 hover:text-chart-green"
+      onClick={() => onSort(sortKey)}
+    >
+      <span className="flex items-center gap-1">
+        {label}
+        {isActive && (
+          <span className="text-chart-green" title={sortDir === "asc" ? "Ascending (click to toggle)" : "Descending (click to toggle)"}>
+            {sortDir === "asc" ? "↑" : "↓"}
+          </span>
+        )}
+      </span>
+    </th>
+  );
+}
+
 export function LinkedInPostsChart({
   posts,
   followersByDate,
   onConfirmRepost,
 }: LinkedInPostsChartProps) {
   const [titlesByPostId, setTitlesByPostId] = useState<Record<string, string>>({});
+  const [sortBy, setSortBy] = useState<SortKey | null>("impressions");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     const toFetch = posts.filter(needsTitleFetch);
@@ -195,6 +230,47 @@ export function LinkedInPostsChart({
   }, [posts, followersByDate, titlesByPostId]);
 
   if (chartData.length === 0) return null;
+
+  const handleSort = useCallback((key: SortKey) => {
+    setSortBy((prev) => {
+      if (prev === key) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return key;
+      }
+      const defaultDesc = ["impressions", "impressionsPct", "followersPct", "engagementRate"].includes(key);
+      setSortDir(defaultDesc ? "desc" : "asc");
+      return key;
+    });
+  }, []);
+
+  const sortedChartData = useMemo(() => {
+    if (!sortBy) return chartData;
+    const sorted = [...chartData].sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case "rank":
+          cmp = a.rank - b.rank;
+          break;
+        case "url":
+          cmp = (a.postUrl ?? "").localeCompare(b.postUrl ?? "");
+          break;
+        case "impressions":
+          cmp = a.impressions - b.impressions;
+          break;
+        case "impressionsPct":
+          cmp = a.impressionsPct - b.impressionsPct;
+          break;
+        case "followersPct":
+          cmp = a.followersPct - b.followersPct;
+          break;
+        case "engagementRate":
+          cmp = (a.engagementRate ?? -1) - (b.engagementRate ?? -1);
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [chartData, sortBy, sortDir]);
 
   const medianImpressions =
     chartData.length > 0
@@ -404,16 +480,16 @@ export function LinkedInPostsChart({
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-chart-dark-grid/50 text-left text-chart-green/80">
-              <th className="px-4 py-2 font-medium">#</th>
-              <th className="px-4 py-2 font-medium">LinkedIn URL</th>
-              <th className="px-4 py-2 font-medium">Impressions</th>
-              <th className="px-4 py-2 font-medium">% total</th>
-              <th className="px-4 py-2 font-medium">% reach</th>
-              <th className="px-4 py-2 font-medium">Eng. rate</th>
+              <SortHeader label="#" sortKey="rank" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="LinkedIn URL" sortKey="url" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Impressions" sortKey="impressions" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="% total" sortKey="impressionsPct" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="% reach" sortKey="followersPct" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Eng. rate" sortKey="engagementRate" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
-            {chartData.map((row) => (
+            {sortedChartData.map((row) => (
               <tr
                 key={row.postId}
                 className="border-b border-chart-dark-grid/30 hover:bg-chart-dark-card/30"
