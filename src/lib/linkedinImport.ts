@@ -72,6 +72,14 @@ function isUrlLike(s: string): boolean {
   return t.startsWith("http") || t.includes("linkedin.com") || t.includes("urn:li:");
 }
 
+/** Extract first LinkedIn URL from text (e.g. when URL is in content column but not Post URL column) */
+function extractUrlFromText(text: string): string | undefined {
+  const match = text.match(
+    /https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+|urn:li:activity:\d+/i
+  );
+  return match ? match[0].trim() : undefined;
+}
+
 function getPostDisplayName(content: string, url: string): string {
   const text = content.trim();
   if (text && !isUrlLike(text)) return text;
@@ -348,9 +356,6 @@ function parseRowsForPosts(
   const dateCol = findColumnContains(headers, ["post publish date", "publish date", "date"]) ?? findColumn(headers, DATE_COL_ALIASES);
   const postUrlCol = findColumnContains(headers, ["post url", "url"]) ?? findColumn(headers, POST_COL_ALIASES);
   const contentCol = findColumnForPostContent(headers, impressionsIdx);
-  const contentTypeCol =
-    findColumnContains(headers, ["content type", "post type"]) ??
-    findColumn(headers, ["content type", "type", "post type"]);
 
   const dateIdx = Math.max(
     0,
@@ -386,23 +391,11 @@ function parseRowsForPosts(
     const activityId = extractActivityId(urlVal);
     const postId = activityId ?? simpleHash((contentVal || urlVal) + date);
     const postContent = getPostDisplayName(contentVal, urlVal);
-    const postUrl = isUrlLike(urlVal) ? urlVal : undefined;
-
-    const fromSheet = isCommentFromSheet(sheetName);
-    const fromType =
-      contentTypeCol && isCommentFromType(row?.[contentTypeCol.index]);
-    const fromRepostType =
-      contentTypeCol && isRepostFromType(row?.[contentTypeCol.index]);
-    const fromRepostContent = isRepostFromContent(postContent || contentVal);
-    const fromLikelyRepostContent = isLikelyRepostFromContent(postContent || contentVal);
-    const contentType: LinkedInContentType =
-      fromSheet || fromType
-        ? "comment"
-        : fromRepostType || fromRepostContent
-          ? "repost"
-          : fromLikelyRepostContent
-            ? "likely_repost"
-            : "post";
+    let postUrl = isUrlLike(urlVal) ? urlVal : undefined;
+    if (!postUrl && (contentVal || postContent)) {
+      const extracted = extractUrlFromText(contentVal || postContent);
+      if (extracted) postUrl = extracted;
+    }
 
     result.push({
       postId,
@@ -412,7 +405,6 @@ function parseRowsForPosts(
       engagements: engagements ?? undefined,
       postContent: postContent || (activityId ? `Post ${activityId}` : `Post ${date}`),
       postUrl,
-      contentType,
     });
   }
   return result;

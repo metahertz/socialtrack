@@ -9,15 +9,11 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
 import type { LinkedInPostRow } from "@/lib/linkedinImport";
 import { formatCompact } from "@/lib/aggregate";
 
 const CHART_GREEN = "#6EE7B7";
-const CHART_AMBER = "#FBBF24";
-const CHART_BLUE = "#60A5FA";
-const CHART_SLATE = "#94A3B8";
 const DARK_CARD = "#1C302B";
 const DARK_GRID = "#2D4A42";
 
@@ -90,6 +86,18 @@ function needsTitleFetch(post: LinkedInPostRow): boolean {
   return !!post.postUrl && (!post.postContent || /^Post\s+/i.test(post.postContent));
 }
 
+function isUrlLike(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t.startsWith("http") || t.includes("linkedin.com") || t.includes("urn:li:");
+}
+
+function contentForLabel(displayContent: string, datePart: string): string {
+  if (!displayContent || displayContent === "—") return "—";
+  if (isUrlLike(displayContent)) return "Post";
+  if (displayContent.match(/https?:\/\/[^\s]+|urn:li:activity:\d+/i)) return "Post";
+  return displayContent;
+}
+
 async function fetchTitle(url: string): Promise<string | null> {
   try {
     const res = await fetch("/api/fetch-title", {
@@ -108,7 +116,6 @@ async function fetchTitle(url: string): Promise<string | null> {
 interface LinkedInPostsChartProps {
   posts: LinkedInPostRow[];
   followersByDate: Array<{ date: string; count: number }>;
-  onConfirmRepost?: (postId: string) => Promise<boolean>;
 }
 
 type SortKey = "rank" | "url" | "impressions" | "impressionsPct" | "followersPct" | "engagementRate";
@@ -126,7 +133,6 @@ type ChartDataRow = {
   followersPct: number;
   engagements?: number;
   engagementRate: number | null;
-  contentType: string;
 };
 
 function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
@@ -260,7 +266,6 @@ function SortHeader({
 export function LinkedInPostsChart({
   posts,
   followersByDate,
-  onConfirmRepost,
 }: LinkedInPostsChartProps) {
   const [titlesByPostId, setTitlesByPostId] = useState<Record<string, string>>({});
 
@@ -313,10 +318,11 @@ export function LinkedInPostsChart({
         const displayContent =
           titlesByPostId[p.postId] ?? p.postContent ?? "—";
         const datePart = formatDateWithTime(p).split(" ")[0];
+        const safeContent = contentForLabel(displayContent, datePart);
         const contentPreview =
-          displayContent.length > 30
-            ? displayContent.slice(0, 30) + "…"
-            : displayContent;
+          safeContent.length > 30
+            ? safeContent.slice(0, 30) + "…"
+            : safeContent;
         return {
           rank: i + 1,
           postId: p.postId,
@@ -330,7 +336,6 @@ export function LinkedInPostsChart({
           followersPct,
           engagements: p.engagements,
           engagementRate,
-          contentType: p.contentType ?? "post",
         };
       });
 
@@ -362,11 +367,7 @@ export function LinkedInPostsChart({
         </h2>
         <p className="mt-1 text-sm text-chart-green/80">
           {chartData.length} item{chartData.length !== 1 ? "s" : ""} · Bar = % of
-          total impressions ·{" "}
-          <span className="text-chart-green">Posts</span> /{" "}
-          <span className="text-chart-amber">Comments</span> /{" "}
-          <span className="text-chart-blue">Reposts</span> /{" "}
-          <span className="text-chart-slate">Likely Repost</span> · Hover for details
+          total impressions · Hover for details
         </p>
       </div>
 
@@ -457,47 +458,18 @@ export function LinkedInPostsChart({
                   return [`${value.toFixed(2)}%`, "% of followers (reach)"];
                 return [value, name];
               }}
-              content={({ active, payload, label }) => {
+              content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const row = payload[0]?.payload as (typeof chartData)[0];
                 if (!row) return null;
-                const isComment = row.contentType === "comment";
-                const isRepost = row.contentType === "repost";
-                const isLikelyRepost = row.contentType === "likely_repost";
-                const typeColor = isComment
-                  ? "text-chart-amber"
-                  : isRepost
-                    ? "text-chart-blue"
-                    : isLikelyRepost
-                      ? "text-chart-slate"
-                      : "text-chart-green";
-                const typeLabel = isComment
-                  ? "Comment"
-                  : isRepost
-                    ? "Repost"
-                    : isLikelyRepost
-                      ? "Likely Repost"
-                      : "Post";
                 return (
                   <div className="rounded-lg border border-chart-dark-grid bg-chart-dark-card p-3">
-                    <p className={`mb-2 font-medium ${typeColor}`}>
-                      #{row.rank} · [{typeLabel}] · {row.dateTime}
+                    <p className="mb-2 font-medium text-chart-green">
+                      #{row.rank} · {row.dateTime}
                     </p>
                     <p className="mb-2 line-clamp-3 text-sm text-chart-green/90">
                       {row.postContent}
                     </p>
-                    {isLikelyRepost && onConfirmRepost && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onConfirmRepost(row.postId);
-                        }}
-                        className="mb-2 rounded border border-chart-blue/50 bg-chart-blue/10 px-2 py-1 text-xs text-chart-blue hover:bg-chart-blue/20"
-                      >
-                        Confirm as repost
-                      </button>
-                    )}
                     <div className="space-y-1 text-sm text-chart-green/80">
                       <p>
                         <strong>{formatCompact(row.impressions)}</strong>{" "}
@@ -524,66 +496,12 @@ export function LinkedInPostsChart({
                 );
               }}
             />
-            <Bar dataKey="impressionsPct" radius={[0, 4, 4, 0]}>
-              {chartData.map((entry, i) => (
-                <Cell
-                  key={entry.postId}
-                  fill={
-                    entry.contentType === "comment"
-                      ? CHART_AMBER
-                      : entry.contentType === "repost"
-                        ? CHART_BLUE
-                        : entry.contentType === "likely_repost"
-                          ? CHART_SLATE
-                          : CHART_GREEN
-                  }
-                />
-              ))}
-            </Bar>
+            <Bar dataKey="impressionsPct" radius={[0, 4, 4, 0]} fill={CHART_GREEN} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       <SortablePostsTable data={chartData} />
-
-      {onConfirmRepost && (() => {
-        const likelyReposts = chartData.filter((d) => d.contentType === "likely_repost");
-        if (likelyReposts.length === 0) return null;
-        return (
-          <div className="mt-4 rounded-lg border border-chart-dark-grid bg-chart-dark/40 p-4">
-            <h3 className="mb-3 text-sm font-medium text-chart-slate">
-              Review Likely Reposts ({likelyReposts.length})
-            </h3>
-            <p className="mb-3 text-xs text-chart-green/70">
-              These were flagged as possible reposts (short content or only hashtags). Confirm to mark as repost.
-            </p>
-            <ul className="space-y-2">
-              {likelyReposts.map((row) => (
-                <li
-                  key={row.postId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-chart-dark-grid/50 bg-chart-dark-card/50 px-3 py-2"
-                >
-                  <span className="line-clamp-2 flex-1 text-sm text-chart-green/90">
-                    {row.postContent}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-chart-slate">
-                      {formatCompact(row.impressions)} imp
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onConfirmRepost(row.postId)}
-                      className="rounded border border-chart-blue/50 bg-chart-blue/10 px-2 py-1 text-xs text-chart-blue hover:bg-chart-blue/20"
-                    >
-                      Confirm repost
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })()}
     </div>
   );
 }

@@ -296,45 +296,21 @@ export function SocialPerformanceChart({
                         <p className="mb-1 text-xs font-medium text-chart-green/80">
                           {isYouTube ? "Video published" : "Posts & comments this day"}:
                         </p>
-                        {postsOnDate.map((p, i) => {
-                          const isComment = p.contentType === "comment";
-                          const isRepost = p.contentType === "repost";
-                          const isLikelyRepost = p.contentType === "likely_repost";
-                          const typeColor = isComment
-                            ? "text-chart-amber"
-                            : isRepost
-                              ? "text-chart-blue"
-                              : isLikelyRepost
-                                ? "text-chart-slate"
-                                : "text-chart-green";
-                          const typeLabel = isComment
-                            ? "Comment"
-                            : isRepost
-                              ? "Repost"
-                              : isLikelyRepost
-                                ? "Likely Repost"
-                                : "Post";
-                          return (
+                        {postsOnDate.map((p, i) => (
                             <div
                               key={i}
                               className="text-xs text-chart-white/70"
                               title={p.content}
                             >
-                              {!isYouTube && (
-                                <span className={`mr-1.5 font-medium ${typeColor}`}>
-                                  [{typeLabel}]
-                                </span>
-                              )}
                               <span className="line-clamp-2">{p.content}</span>
                               {p.impressions > 0 && (
-                                <span className={typeColor}>
+                                <span className="text-chart-green/80">
                                   {" "}
                                   — {p.impressions.toLocaleString()} views
                                 </span>
                               )}
                             </div>
-                          );
-                        })}
+                          ))}
                       </div>
                     )}
                   </div>

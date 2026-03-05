@@ -31,7 +31,6 @@ export default function Home() {
     handleFile,
     approveImport,
     rejectImport,
-    confirmRepost,
     clear,
   } = useLinkedInData();
 
@@ -316,7 +315,6 @@ export default function Home() {
               <LinkedInPostsChart
                 posts={linkedInPostsFiltered}
                 followersByDate={stored?.followersByDate ?? []}
-                onConfirmRepost={confirmRepost}
               />
             </div>
           )}
