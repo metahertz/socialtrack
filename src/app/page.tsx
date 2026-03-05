@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
 import { LinkedInPostsChart } from "@/components/LinkedInPostsChart";
@@ -94,10 +94,60 @@ export default function Home() {
     });
   };
 
-  const linkedInData =
+  const linkedInDataRaw =
     linkedInMetrics && selected.has("linkedin")
       ? aggregatePlatforms([linkedInMetrics], ["linkedin"])
       : [];
+
+  const linkedInDateBounds = useMemo(() => {
+    if (!stored?.dailyImpressions?.length && !stored?.posts?.length) return null;
+    const dates = [
+      ...(stored.dailyImpressions?.map((d) => d.date) ?? []),
+      ...(stored.posts?.map((p) => p.date) ?? []),
+    ];
+    if (dates.length === 0) return null;
+    const sorted = [...new Set(dates)].sort();
+    return { min: sorted[0], max: sorted[sorted.length - 1] };
+  }, [stored?.dailyImpressions, stored?.posts]);
+
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
+  useEffect(() => {
+    if (!linkedInDateBounds) return;
+    setDateFrom((prev) => {
+      if (!prev || prev < linkedInDateBounds.min || prev > linkedInDateBounds.max)
+        return linkedInDateBounds.min;
+      return prev;
+    });
+    setDateTo((prev) => {
+      if (!prev || prev < linkedInDateBounds.min || prev > linkedInDateBounds.max)
+        return linkedInDateBounds.max;
+      return prev;
+    });
+  }, [linkedInDateBounds]);
+
+  const linkedInDateFilter = useMemo(() => {
+    if (!linkedInDateBounds || !dateFrom || !dateTo) return null;
+    const from = dateFrom >= linkedInDateBounds.min ? dateFrom : linkedInDateBounds.min;
+    const to = dateTo <= linkedInDateBounds.max ? dateTo : linkedInDateBounds.max;
+    return { from, to };
+  }, [linkedInDateBounds, dateFrom, dateTo]);
+
+  const linkedInData =
+    linkedInDateFilter && linkedInDataRaw.length > 0
+      ? linkedInDataRaw.filter(
+          (d) => d.date >= linkedInDateFilter.from && d.date <= linkedInDateFilter.to
+        )
+      : linkedInDataRaw;
+
+  const linkedInPostsFiltered =
+    linkedInDateFilter && stored?.posts
+      ? stored.posts.filter(
+          (p) => p.date >= linkedInDateFilter.from && p.date <= linkedInDateFilter.to
+        )
+      : stored?.posts ?? [];
+
   const youtubeData =
     youtubeMetrics && selected.has("youtube")
       ? aggregatePlatforms([youtubeMetrics], ["youtube"])
@@ -224,8 +274,36 @@ export default function Home() {
         </div>
       )}
 
-      {linkedInData.length > 0 && (
+      {linkedInDataRaw.length > 0 && linkedInDateBounds && (
         <>
+          <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-chart-dark-grid/50 bg-chart-dark/40 px-4 py-3">
+            <span className="text-sm font-medium text-chart-green">Date range:</span>
+            <label className="flex items-center gap-2 text-sm text-chart-green/90">
+              From
+              <input
+                type="date"
+                value={dateFrom}
+                min={linkedInDateBounds.min}
+                max={dateTo || linkedInDateBounds.max}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green focus:border-chart-green focus:outline-none focus:ring-1 focus:ring-chart-green"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-chart-green/90">
+              To
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || linkedInDateBounds.min}
+                max={linkedInDateBounds.max}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green focus:border-chart-green focus:outline-none focus:ring-1 focus:ring-chart-green"
+              />
+            </label>
+            <span className="text-xs text-chart-green/60">
+              {linkedInDateBounds.min} – {linkedInDateBounds.max} (imported)
+            </span>
+          </div>
           <div className="mb-10">
             <SocialPerformanceChart
               data={linkedInData}
@@ -233,11 +311,11 @@ export default function Home() {
               title="LinkedIn — Follower Growth & Cumulative Impressions"
             />
           </div>
-          {stored?.posts && stored.posts.length > 0 && (
+          {linkedInPostsFiltered.length > 0 && (
             <div className="mb-10">
               <LinkedInPostsChart
-                posts={stored.posts}
-                followersByDate={stored.followersByDate ?? []}
+                posts={linkedInPostsFiltered}
+                followersByDate={stored?.followersByDate ?? []}
                 onConfirmRepost={confirmRepost}
               />
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   BarChart,
   Bar,
@@ -39,6 +39,51 @@ function formatDateWithTime(post: LinkedInPostRow): string {
     return `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
   }
   return post.date;
+}
+
+function CopyableUrl({ url }: { url?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // fallback: select and copy
+      const el = document.createElement("input");
+      el.value = url;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }, [url]);
+
+  if (!url) return <span className="text-chart-slate">—</span>;
+  return (
+    <div className="flex items-center gap-2">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="max-w-[280px] truncate text-chart-blue hover:underline"
+        title={url}
+      >
+        {url}
+      </a>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 rounded border border-chart-dark-grid px-2 py-0.5 text-xs text-chart-green/80 hover:bg-chart-dark-card hover:text-chart-green"
+        title="Copy URL"
+      >
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
+  );
 }
 
 function needsTitleFetch(post: LinkedInPostRow): boolean {
@@ -129,6 +174,7 @@ export function LinkedInPostsChart({
         return {
           rank: i + 1,
           postId: p.postId,
+          postUrl: p.postUrl,
           label: `${datePart} · ${contentPreview || "—"}`,
           dateTime: formatDateWithTime(p),
           postContent: displayContent,
@@ -349,6 +395,51 @@ export function LinkedInPostsChart({
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="mt-6 overflow-x-auto rounded-lg border border-chart-dark-grid/50 bg-chart-dark/40">
+        <h3 className="border-b border-chart-dark-grid/50 px-4 py-3 text-sm font-medium text-chart-green">
+          Posts table — copy URLs for further investigation
+        </h3>
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b border-chart-dark-grid/50 text-left text-chart-green/80">
+              <th className="px-4 py-2 font-medium">#</th>
+              <th className="px-4 py-2 font-medium">LinkedIn URL</th>
+              <th className="px-4 py-2 font-medium">Impressions</th>
+              <th className="px-4 py-2 font-medium">% total</th>
+              <th className="px-4 py-2 font-medium">% reach</th>
+              <th className="px-4 py-2 font-medium">Eng. rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chartData.map((row) => (
+              <tr
+                key={row.postId}
+                className="border-b border-chart-dark-grid/30 hover:bg-chart-dark-card/30"
+              >
+                <td className="px-4 py-2 text-chart-green/90">{row.rank}</td>
+                <td className="px-4 py-2">
+                  <CopyableUrl url={row.postUrl} />
+                </td>
+                <td className="px-4 py-2 text-chart-green/90">
+                  {formatCompact(row.impressions)}
+                </td>
+                <td className="px-4 py-2 text-chart-green/90">
+                  {row.impressionsPct.toFixed(1)}%
+                </td>
+                <td className="px-4 py-2 text-chart-green/90">
+                  {row.followersPct > 0 ? `${row.followersPct.toFixed(1)}%` : "—"}
+                </td>
+                <td className="px-4 py-2 text-chart-green/90">
+                  {row.engagementRate != null
+                    ? `${row.engagementRate.toFixed(1)}%`
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {onConfirmRepost && (() => {
