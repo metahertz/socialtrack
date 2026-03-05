@@ -6,6 +6,7 @@ import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
 import { LinkedInPostsChart } from "@/components/LinkedInPostsChart";
 import { LinkedInUpload } from "@/components/LinkedInUpload";
 import { LinkedInImportPreview } from "@/components/LinkedInImportPreview";
+import { PublicProfileSettings } from "@/components/PublicProfileSettings";
 import { YouTubeUpload } from "@/components/YouTubeUpload";
 import { YouTubeImportPreview } from "@/components/YouTubeImportPreview";
 import { aggregatePlatforms, getDateRangeLabel } from "@/lib/aggregate";
@@ -108,6 +109,22 @@ export default function Home() {
     const sorted = [...new Set(dates)].sort();
     return { min: sorted[0], max: sorted[sorted.length - 1] };
   }, [stored?.dailyImpressions, stored?.posts]);
+
+  const dataDateBounds = useMemo(() => {
+    const linkedIn = linkedInDateBounds;
+    const youtubeDates = youtubeStored?.dailyData?.map((d) => d.date) ?? [];
+    const yMin = youtubeDates.length ? [...youtubeDates].sort()[0] : null;
+    const yMax = youtubeDates.length ? [...youtubeDates].sort().pop() ?? null;
+    if (!linkedIn && !yMin) return null;
+    const all = [
+      linkedIn?.min,
+      linkedIn?.max,
+      yMin,
+      yMax,
+    ].filter(Boolean) as string[];
+    const sorted = [...new Set(all)].sort();
+    return { min: sorted[0], max: sorted[sorted.length - 1] };
+  }, [linkedInDateBounds, youtubeStored?.dailyData]);
 
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -254,6 +271,8 @@ export default function Home() {
           />
         )}
       </div>
+
+      <PublicProfileSettings dataDateBounds={dataDateBounds} />
 
       {availablePlatforms.length > 1 && (
         <div className="mb-6 flex flex-wrap gap-3">
