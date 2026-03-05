@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
 import type { LinkedInPostRow } from "@/lib/linkedinImport";
 import { formatCompact } from "@/lib/aggregate";
@@ -105,18 +106,25 @@ function extractUrlFromText(text: string): string | undefined {
   return match ? match[0].trim() : undefined;
 }
 
-async function fetchTitle(url: string): Promise<string | null> {
+type LinkedInPostType = "video" | "repost" | "post";
+
+async function fetchTitleAndType(
+  url: string
+): Promise<{ title: string | null; postType?: LinkedInPostType }> {
   try {
     const res = await fetch("/api/fetch-title", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { title: null };
     const json = await res.json();
-    return json.title ?? null;
+    return {
+      title: json.title ?? null,
+      postType: json.postType ?? "post",
+    };
   } catch {
-    return null;
+    return { title: null };
   }
 }
 
@@ -125,7 +133,7 @@ interface LinkedInPostsChartProps {
   followersByDate: Array<{ date: string; count: number }>;
 }
 
-type SortKey = "rank" | "url" | "impressions" | "impressionsPct" | "followersPct" | "engagementRate";
+type SortKey = "rank" | "url" | "type" | "impressions" | "impressionsPct" | "followersPct" | "engagementRate";
 
 type ChartDataRow = {
   rank: number;
@@ -135,11 +143,18 @@ type ChartDataRow = {
   label: string;
   dateTime: string;
   postContent: string;
+  postType: LinkedInPostType;
   impressions: number;
   impressionsPct: number;
   followersPct: number;
   engagements?: number;
   engagementRate: number | null;
+};
+
+const POST_TYPE_COLORS: Record<LinkedInPostType, string> = {
+  video: "#60A5FA",
+  repost: "#FBBF24",
+  post: CHART_GREEN,
 };
 
 function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
@@ -169,6 +184,9 @@ function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
         case "url":
           cmp = (a.postUrl ?? "").localeCompare(b.postUrl ?? "");
           break;
+        case "type":
+          cmp = a.postType.localeCompare(b.postType);
+          break;
         case "impressions":
           cmp = a.impressions - b.impressions;
           break;
@@ -197,6 +215,7 @@ function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
           <tr className="border-b border-chart-dark-grid/50 text-left text-chart-green/80">
             <SortHeader label="#" sortKey="rank" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
             <SortHeader label="LinkedIn URL" sortKey="url" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
+            <SortHeader label="Type" sortKey="type" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
             <SortHeader label="Impressions" sortKey="impressions" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
             <SortHeader label="% total" sortKey="impressionsPct" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
             <SortHeader label="% reach" sortKey="followersPct" currentSort={sortState.sortBy} sortDir={sortState.sortDir} onSort={handleSort} />
@@ -212,6 +231,17 @@ function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
               <td className="px-4 py-2 text-chart-green/90">{row.rank}</td>
               <td className="px-4 py-2">
                 <CopyableUrl url={row.postUrl} />
+              </td>
+              <td className="px-4 py-2">
+                <span
+                  className="rounded px-1.5 py-0.5 text-xs font-medium"
+                  style={{
+                    backgroundColor: `${POST_TYPE_COLORS[row.postType]}33`,
+                    color: POST_TYPE_COLORS[row.postType],
+                  }}
+                >
+                  {row.postType}
+                </span>
               </td>
               <td className="px-4 py-2 text-chart-green/90">
                 {formatCompact(row.impressions)}
@@ -275,21 +305,29 @@ export function LinkedInPostsChart({
   followersByDate,
 }: LinkedInPostsChartProps) {
   const [titlesByPostId, setTitlesByPostId] = useState<Record<string, string>>({});
+  const [postTypesByPostId, setPostTypesByPostId] = useState<
+    Record<string, LinkedInPostType>
+  >({});
 
   useEffect(() => {
-    const toFetch = posts.filter(needsTitleFetch);
+    const toFetch = posts.filter((p) => p.postUrl);
     if (toFetch.length === 0) return;
     let cancelled = false;
     const run = async () => {
-      const next: Record<string, string> = {};
+      const nextTitles: Record<string, string> = {};
+      const nextTypes: Record<string, LinkedInPostType> = {};
       for (const post of toFetch) {
         if (cancelled) return;
-        const title = await fetchTitle(post.postUrl!);
+        const { title, postType } = await fetchTitleAndType(post.postUrl!);
         if (cancelled) return;
-        if (title) next[post.postId] = title;
+        if (title) nextTitles[post.postId] = title;
+        nextTypes[post.postId] = postType ?? "post";
         await new Promise((r) => setTimeout(r, 150));
       }
-      if (!cancelled) setTitlesByPostId((prev) => ({ ...prev, ...next }));
+      if (!cancelled) {
+        setTitlesByPostId((prev) => ({ ...prev, ...nextTitles }));
+        setPostTypesByPostId((prev) => ({ ...prev, ...nextTypes }));
+      }
     };
     run();
     return () => {
@@ -334,6 +372,7 @@ export function LinkedInPostsChart({
           p.postUrl ??
           extractUrlFromText(displayContent) ??
           extractUrlFromText(p.postContent ?? "");
+        const postType = postTypesByPostId[p.postId] ?? "post";
         return {
           rank: i + 1,
           postId: p.postId,
@@ -342,6 +381,7 @@ export function LinkedInPostsChart({
           label: `${datePart} · ${contentPreview || "—"}`,
           dateTime: formatDateWithTime(p),
           postContent: displayContent,
+          postType,
           impressions: p.impressions,
           impressionsPct,
           followersPct,
@@ -355,7 +395,7 @@ export function LinkedInPostsChart({
       totalImpressions,
       totalFollowers,
     };
-  }, [posts, followersByDate, titlesByPostId]);
+  }, [posts, followersByDate, titlesByPostId, postTypesByPostId]);
 
   if (chartData.length === 0) return null;
 
@@ -380,6 +420,29 @@ export function LinkedInPostsChart({
           {chartData.length} item{chartData.length !== 1 ? "s" : ""} · Bar = % of
           total impressions · Hover for details
         </p>
+        <div className="mt-2 flex flex-wrap gap-4 text-xs text-chart-green/70">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: POST_TYPE_COLORS.post }}
+            />
+            post
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: POST_TYPE_COLORS.video }}
+            />
+            video
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: POST_TYPE_COLORS.repost }}
+            />
+            repost
+          </span>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-6 rounded-lg bg-chart-dark/60 px-4 py-3">
@@ -477,6 +540,16 @@ export function LinkedInPostsChart({
                   <div className="rounded-lg border border-chart-dark-grid bg-chart-dark-card p-3">
                     <p className="mb-2 font-medium text-chart-green">
                       #{row.rank} · {row.dateTime}
+                      {row.postType !== "post" && (
+                        <span
+                          className="ml-2 rounded px-1.5 py-0.5 text-xs text-chart-dark/90"
+                          style={{
+                            backgroundColor: POST_TYPE_COLORS[row.postType],
+                          }}
+                        >
+                          {row.postType}
+                        </span>
+                      )}
                     </p>
                     <p className="mb-2 line-clamp-3 text-sm text-chart-green/90">
                       {row.postContent}
@@ -507,7 +580,11 @@ export function LinkedInPostsChart({
                 );
               }}
             />
-            <Bar dataKey="impressionsPct" radius={[0, 4, 4, 0]} fill={CHART_GREEN} />
+            <Bar dataKey="impressionsPct" radius={[0, 4, 4, 0]}>
+              {chartData.map((row, i) => (
+                <Cell key={row.rowId} fill={POST_TYPE_COLORS[row.postType]} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
