@@ -11,15 +11,17 @@ interface PublicProfileSettings {
 
 interface Props {
   dataDateBounds: { min: string; max: string } | null;
+  /** When true, show content expanded (no collapse) - for dedicated share page */
+  expanded?: boolean;
 }
 
-export function PublicProfileSettings({ dataDateBounds }: Props) {
+export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded }: Props) {
   const [settings, setSettings] = useState<PublicProfileSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!!alwaysExpanded);
 
   const load = useCallback(async () => {
     try {
@@ -72,20 +74,24 @@ export function PublicProfileSettings({ dataDateBounds }: Props) {
 
   if (isLoading || !settings) return null;
 
+  const showContent = alwaysExpanded || expanded;
+
   return (
     <div className="mb-6 rounded-xl border border-chart-dark-grid/50 bg-chart-dark/40">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-chart-green hover:bg-chart-dark-card/50"
-      >
-        <span className="font-medium">Public profile</span>
-        <span className="text-chart-green/60">
-          {expanded ? "▼" : "▶"} {settings.enabled ? "Enabled" : "Disabled"}
-        </span>
-      </button>
-      {expanded && (
-        <div className="border-t border-chart-dark-grid/50 px-4 py-4">
+      {!alwaysExpanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-chart-green hover:bg-chart-dark-card/50"
+        >
+          <span className="font-medium">Public profile</span>
+          <span className="text-chart-green/60">
+            {expanded ? "▼" : "▶"} {settings.enabled ? "Enabled" : "Disabled"}
+          </span>
+        </button>
+      )}
+      {showContent && (
+        <div className={`px-4 py-4 ${!alwaysExpanded ? "border-t border-chart-dark-grid/50" : ""}`}>
           <label className="flex items-center gap-2 text-sm text-chart-green/90">
             <input
               type="checkbox"
