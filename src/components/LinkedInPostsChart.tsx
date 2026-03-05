@@ -106,7 +106,7 @@ function extractUrlFromText(text: string): string | undefined {
   return match ? match[0].trim() : undefined;
 }
 
-type LinkedInPostType = "video" | "repost" | "post";
+type LinkedInPostType = "video" | "repost" | "post" | "processing";
 
 async function fetchTitleAndType(
   url: string
@@ -155,6 +155,7 @@ const POST_TYPE_COLORS: Record<LinkedInPostType, string> = {
   video: "#60A5FA",
   repost: "#FBBF24",
   post: CHART_GREEN,
+  processing: "#94A3B8",
 };
 
 function SortablePostsTable({ data }: { data: ChartDataRow[] }) {
@@ -314,19 +315,18 @@ export function LinkedInPostsChart({
     if (toFetch.length === 0) return;
     let cancelled = false;
     const run = async () => {
-      const nextTitles: Record<string, string> = {};
-      const nextTypes: Record<string, LinkedInPostType> = {};
       for (const post of toFetch) {
         if (cancelled) return;
         const { title, postType } = await fetchTitleAndType(post.postUrl!);
         if (cancelled) return;
-        if (title) nextTitles[post.postId] = title;
-        nextTypes[post.postId] = postType ?? "post";
+        setTitlesByPostId((prev) =>
+          title ? { ...prev, [post.postId]: title } : prev
+        );
+        setPostTypesByPostId((prev) => ({
+          ...prev,
+          [post.postId]: postType ?? "post",
+        }));
         await new Promise((r) => setTimeout(r, 150));
-      }
-      if (!cancelled) {
-        setTitlesByPostId((prev) => ({ ...prev, ...nextTitles }));
-        setPostTypesByPostId((prev) => ({ ...prev, ...nextTypes }));
       }
     };
     run();
@@ -372,7 +372,8 @@ export function LinkedInPostsChart({
           p.postUrl ??
           extractUrlFromText(displayContent) ??
           extractUrlFromText(p.postContent ?? "");
-        const postType = postTypesByPostId[p.postId] ?? "post";
+        const postType: LinkedInPostType =
+          postTypesByPostId[p.postId] ?? (p.postUrl ? "processing" : "post");
         return {
           rank: i + 1,
           postId: p.postId,
@@ -421,6 +422,13 @@ export function LinkedInPostsChart({
           total impressions · Hover for details
         </p>
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-chart-green/70">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: POST_TYPE_COLORS.processing }}
+            />
+            processing
+          </span>
           <span className="flex items-center gap-1.5">
             <span
               className="h-2.5 w-2.5 rounded-sm"
