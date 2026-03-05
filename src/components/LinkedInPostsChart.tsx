@@ -98,6 +98,13 @@ function contentForLabel(displayContent: string, datePart: string): string {
   return displayContent;
 }
 
+function extractUrlFromText(text: string): string | undefined {
+  const match = text.match(
+    /https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>"']+|urn:li:activity:\d+/i
+  );
+  return match ? match[0].trim() : undefined;
+}
+
 async function fetchTitle(url: string): Promise<string | null> {
   try {
     const res = await fetch("/api/fetch-title", {
@@ -323,11 +330,15 @@ export function LinkedInPostsChart({
           safeContent.length > 30
             ? safeContent.slice(0, 30) + "…"
             : safeContent;
+        const resolvedUrl =
+          p.postUrl ??
+          extractUrlFromText(displayContent) ??
+          extractUrlFromText(p.postContent ?? "");
         return {
           rank: i + 1,
           postId: p.postId,
           rowId: `${p.postId}:${p.date}`,
-          postUrl: p.postUrl,
+          postUrl: resolvedUrl || undefined,
           label: `${datePart} · ${contentPreview || "—"}`,
           dateTime: formatDateWithTime(p),
           postContent: displayContent,
