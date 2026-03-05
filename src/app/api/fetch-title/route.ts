@@ -9,12 +9,28 @@ function isGenericTitle(t: string): boolean {
 /** "video" | "repost" | "post" from LinkedIn public post HTML */
 export type LinkedInPostType = "video" | "repost" | "post";
 
-function extractPostType(html: string): LinkedInPostType {
+function extractActivityIdFromUrl(url: string): string | null {
+  const m = url.match(/activity[:\-](\d+)/i);
+  return m ? m[1] : null;
+}
+
+function extractPostType(html: string, url: string): LinkedInPostType {
   if (html.includes('"@type":"VideoObject"') || html.includes('"@type": "VideoObject"')) {
     return "video";
   }
-  if (html.includes("urn:li:share") && /data-attributed-urn=["']urn:li:share:/i.test(html)) {
-    return "repost";
+  const activityId = extractActivityIdFromUrl(url);
+  if (activityId) {
+    const escaped = activityId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const activityUrnPat = `urn:li:activity:${escaped}`;
+    const attributedInBlock = new RegExp(
+      `data-activity-urn=["']${activityUrnPat}["'][^>]*data-attributed-urn=["'](urn:li:[^"']+)["']|data-attributed-urn=["'](urn:li:[^"']+)["'][^>]*data-activity-urn=["']${activityUrnPat}["']`,
+      "i"
+    );
+    const m = html.match(attributedInBlock);
+    const attributed = m ? (m[1] ?? m[2]) : null;
+    if (attributed?.startsWith("urn:li:share")) {
+      return "repost";
+    }
   }
   return "post";
 }
@@ -130,7 +146,7 @@ export async function POST(request: Request) {
 
     const html = await res.text();
     const title = extractTitle(html);
-    const postType = extractPostType(html);
+    const postType = extractPostType(html, url);
 
     if (!title) {
       return NextResponse.json(
