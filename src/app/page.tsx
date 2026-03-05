@@ -196,10 +196,10 @@ export default function Home() {
             Follower growth & cumulative impressions across your social channels
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/share"
-            className="text-sm text-chart-green/80 hover:text-chart-green hover:underline"
+            className="rounded border border-chart-dark-grid px-3 py-1.5 text-sm font-medium text-chart-green/90 hover:bg-chart-dark-card hover:text-chart-green"
           >
             Share
           </Link>

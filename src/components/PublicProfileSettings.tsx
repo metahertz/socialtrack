@@ -26,9 +26,26 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/profile/settings", { credentials: "include" });
-      if (!res.ok) return;
-      const json = await res.json();
-      setSettings(json.settings);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.settings) {
+        setSettings(json.settings);
+      } else {
+        setSettings({
+          enabled: false,
+          slug: "",
+          dateFrom: "",
+          dateTo: "",
+        });
+        if (!res.ok) setError(json.error ?? "Could not load settings");
+      }
+    } catch {
+      setSettings({
+        enabled: false,
+        slug: "",
+        dateFrom: "",
+        dateTo: "",
+      });
+      setError("Failed to load settings");
     } finally {
       setIsLoading(false);
     }
@@ -72,7 +89,20 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
   const defaultFrom = dataDateBounds?.min ?? "";
   const defaultTo = dataDateBounds?.max ?? "";
 
-  if (isLoading || !settings) return null;
+  if (isLoading) {
+    return (
+      <div className="mb-6 rounded-xl border border-chart-dark-grid/50 bg-chart-dark/40 px-4 py-6 text-center text-chart-green/70">
+        Loading…
+      </div>
+    );
+  }
+
+  const settingsSafe = settings ?? {
+    enabled: false,
+    slug: "",
+    dateFrom: "",
+    dateTo: "",
+  };
 
   const showContent = alwaysExpanded || expanded;
 
@@ -86,35 +116,38 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
         >
           <span className="font-medium">Public profile</span>
           <span className="text-chart-green/60">
-            {expanded ? "▼" : "▶"} {settings.enabled ? "Enabled" : "Disabled"}
+            {expanded ? "▼" : "▶"} {settingsSafe.enabled ? "Enabled" : "Disabled"}
           </span>
         </button>
       )}
       {showContent && (
         <div className={`px-4 py-4 ${!alwaysExpanded ? "border-t border-chart-dark-grid/50" : ""}`}>
+          {error && (
+            <p className="mb-3 text-sm text-amber-400">{error}</p>
+          )}
           <label className="flex items-center gap-2 text-sm text-chart-green/90">
             <input
               type="checkbox"
-              checked={settings.enabled}
+              checked={settingsSafe.enabled}
               onChange={(e) =>
-                setSettings((s) => (s ? { ...s, enabled: e.target.checked } : s))
+                setSettings((s) => (s ? { ...s, enabled: e.target.checked } : settingsSafe))
               }
               className="rounded border-chart-dark-grid"
             />
             Make my profile publicly viewable (read-only)
           </label>
 
-          {settings.enabled && (
+          {settingsSafe.enabled && (
             <>
               <div className="mt-4 flex flex-wrap items-end gap-4">
                 <label className="flex flex-col gap-1 text-sm text-chart-green/90">
                   Public URL slug
                   <input
                     type="text"
-                    value={settings.slug}
+                    value={settingsSafe.slug}
                     onChange={(e) =>
                       setSettings((s) =>
-                        s ? { ...s, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") } : s
+                        s ? { ...s, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") } : { ...settingsSafe, slug: e.target.value }
                       )
                     }
                     placeholder="my-profile"
@@ -125,11 +158,11 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
                   Date range (from)
                   <input
                     type="date"
-                    value={settings.dateFrom || defaultFrom}
+                    value={settingsSafe.dateFrom || defaultFrom}
                     min={defaultFrom}
-                    max={settings.dateTo || defaultTo || defaultTo}
+                    max={settingsSafe.dateTo || defaultTo || defaultTo}
                     onChange={(e) =>
-                      setSettings((s) => (s ? { ...s, dateFrom: e.target.value } : s))
+                      setSettings((s) => (s ? { ...s, dateFrom: e.target.value } : { ...settingsSafe, dateFrom: e.target.value }))
                     }
                     className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green"
                   />
@@ -138,11 +171,11 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
                   Date range (to)
                   <input
                     type="date"
-                    value={settings.dateTo || defaultTo}
-                    min={settings.dateFrom || defaultFrom}
+                    value={settingsSafe.dateTo || defaultTo}
+                    min={settingsSafe.dateFrom || defaultFrom}
                     max={defaultTo}
                     onChange={(e) =>
-                      setSettings((s) => (s ? { ...s, dateTo: e.target.value } : s))
+                      setSettings((s) => (s ? { ...s, dateTo: e.target.value } : { ...settingsSafe, dateTo: e.target.value }))
                     }
                     className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green"
                   />
@@ -161,7 +194,7 @@ export function PublicProfileSettings({ dataDateBounds, expanded: alwaysExpanded
                 >
                   {isSaving ? "Saving…" : "Save"}
                 </button>
-                {settings.enabled && settings.slug && (
+                {settingsSafe.enabled && settingsSafe.slug && (
                   <button
                     type="button"
                     onClick={handleCopyLink}
