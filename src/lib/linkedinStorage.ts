@@ -21,6 +21,24 @@ export async function loadLinkedInData(): Promise<StoredLinkedInData | null> {
 }
 
 /** Save to API (MongoDB) when authenticated */
+/** Update a single post's contentType (e.g. confirm likely_repost → repost) */
+export async function updatePostContentType(
+  postId: string,
+  contentType: "repost"
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/linkedin", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postId, contentType }),
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function saveLinkedInData(data: StoredLinkedInData): Promise<boolean> {
   try {
     const res = await fetch("/api/linkedin", {

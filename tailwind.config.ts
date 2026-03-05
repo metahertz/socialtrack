@@ -12,6 +12,9 @@ const config: Config = {
         chart: {
           green: "#6EE7B7",
           "green-dim": "#34D399",
+          amber: "#FBBF24",
+          blue: "#60A5FA",
+          slate: "#94A3B8",
           dark: "#0F1F1A",
           "dark-card": "#1C302B",
           "dark-grid": "#2D4A42",

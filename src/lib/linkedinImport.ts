@@ -1,12 +1,18 @@
 import type { PlatformMetrics, DailyMetrics } from "@/types/social";
 
-/** Raw post-level row from LinkedIn Content export (TOP POSTS sheet) */
+/** Content type: post, comment, repost, or likely_repost (user can confirm to repost) */
+export type LinkedInContentType = "post" | "comment" | "repost" | "likely_repost";
+
+/** Raw post-level row from LinkedIn Content export (TOP POSTS or COMMENTS sheet) */
 export interface LinkedInPostRow {
   postId: string;
   date: string; // YYYY-MM-DD
+  dateTime?: string; // Display format: "m/d/yyyy h:mm a"
   impressions: number;
   engagements?: number;
   postContent?: string;
+  postUrl?: string; // URL for fetching title when postContent is not usable
+  contentType?: LinkedInContentType;
 }
 
 /** Daily impressions from ENGAGEMENT sheet (date -> impressions) */
@@ -58,7 +64,36 @@ const FOLLOWERS_COL_ALIASES = [
   "follower",
 ];
 const POST_COL_ALIASES = ["post", "content", "title", "update", "share", "update text"];
+const POST_CONTENT_ALIASES = ["update text", "post", "content", "share", "title", "update"];
 const ENGAGEMENTS_COL_ALIASES = ["engagements", "engagement", "total engagement"];
+
+function isUrlLike(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t.startsWith("http") || t.includes("linkedin.com") || t.includes("urn:li:");
+}
+
+function getPostDisplayName(content: string, url: string): string {
+  const text = content.trim();
+  if (text && !isUrlLike(text)) return text;
+  const urlText = url.trim();
+  if (urlText && !isUrlLike(urlText)) return urlText;
+  return "";
+}
+
+function findColumnForPostContent(
+  headers: string[],
+  _nearIdx: number
+): { index: number; name: string } | null {
+  const lower = headers.map((h) => String(h ?? "").trim().toLowerCase());
+  for (const alias of POST_CONTENT_ALIASES) {
+    for (let i = 0; i < lower.length; i++) {
+      const h = lower[i];
+      if (h.includes("url") || h === "url") continue;
+      if (h === alias || h.includes(alias)) return { index: i, name: headers[i] };
+    }
+  }
+  return null;
+}
 
 function findColumn(
   headers: string[],
@@ -122,6 +157,60 @@ function parseDate(val: unknown): string | null {
   return null;
 }
 
+/**
+ * Parse date and optional time. Returns date (YYYY-MM-DD) and dateTime for display.
+ * Handles Excel serial with decimal (time as fraction of day).
+ */
+function parseDateTime(val: unknown): { date: string; dateTime: string } | null {
+  if (!val) return null;
+  let dateStr: string | null = null;
+  let dateTimeStr: string | null = null;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      dateStr = d.toISOString().slice(0, 10);
+      dateTimeStr = d.toLocaleString("en-US", {
+        month: "numeric",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return { date: dateStr, dateTime: dateTimeStr };
+    }
+    dateStr = parseDate(trimmed);
+    if (dateStr) return { date: dateStr, dateTime: dateStr };
+  }
+  if (typeof val === "number" && val >= 1 && val <= 1000000) {
+    const d = new Date((val - 25569) * 86400000);
+    if (!isNaN(d.getTime())) {
+      dateStr = d.toISOString().slice(0, 10);
+      dateTimeStr = d.toLocaleString("en-US", {
+        month: "numeric",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return { date: dateStr, dateTime: dateTimeStr };
+    }
+  }
+  dateStr = parseDate(val);
+  if (dateStr) {
+    const [y, m, d] = dateStr.split("-");
+    dateTimeStr =
+      y && m && d
+        ? `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`
+        : dateStr;
+    return { date: dateStr, dateTime: dateTimeStr };
+  }
+  return null;
+}
+
 function parseNumber(val: unknown): number {
   if (val == null) return 0;
   if (typeof val === "number" && !isNaN(val)) return Math.max(0, val);
@@ -143,6 +232,7 @@ function simpleHash(str: string): string {
 
 const SHEET_NAMES_ENGAGEMENT = ["ENGAGEMENT", "DISCOVERY"];
 const SHEET_NAMES_TOP_POSTS = ["TOP POSTS", "TOP_POSTS"];
+const SHEET_NAMES_COMMENTS = ["COMMENTS", "TOP COMMENTS", "TOP_COMMENTS"];
 const SHEET_NAMES_FOLLOWERS = ["FOLLOWERS", "FOLLOWER"];
 
 /** Parse ENGAGEMENT/DISCOVERY for daily impressions (date -> impressions, sum if multiple per date) */
@@ -191,18 +281,76 @@ function extractActivityId(url: unknown): string | null {
   return match ? match[1] : null;
 }
 
-function parseRowsForPosts(rows: unknown[][], sheetName: string): LinkedInPostRow[] {
+function isCommentFromSheet(sheetName: string): boolean {
+  const n = sheetName.trim().toUpperCase().replace(/\s+/g, " ");
+  return SHEET_NAMES_COMMENTS.some((p) =>
+    n.includes(p.replace(/\s+/g, " ").toUpperCase())
+  );
+}
+
+function isCommentFromType(val: unknown): boolean {
+  const s = String(val ?? "").trim().toLowerCase();
+  return s.includes("comment") || s === "comment";
+}
+
+function isRepostFromType(val: unknown): boolean {
+  const s = String(val ?? "").trim().toLowerCase();
+  return (
+    s.includes("repost") ||
+    s.includes("re-post") ||
+    s.includes("reshare") ||
+    s.includes("share") ||
+    s === "share"
+  );
+}
+
+/** Heuristic: LinkedIn reposts often start with "Reposted", "Reposted by", etc. */
+function isRepostFromContent(content: string): boolean {
+  const t = content.trim().toLowerCase();
+  if (!t) return false;
+  const repostPatterns = [
+    /^reposted\b/i,
+    /^reposted\s+by\b/i,
+    /^reposted\s+this\b/i,
+    /^shared\s+(a\s+)?(post|article|video)\b/i,
+    /^repost\s+of\b/i,
+    /^re-sharing\b/i,
+    /^reshared\b/i,
+  ];
+  return repostPatterns.some((p) => p.test(t));
+}
+
+/** Heuristic: short content (couple sentences) or only hashtags → likely repost */
+function isLikelyRepostFromContent(content: string): boolean {
+  const t = content.trim();
+  if (!t || t.length < 5 || isUrlLike(t)) return false;
+  // Only hashtags: e.g. "#leadership #innovation #growth"
+  if (/^(\s*#[\w-]+\s*)+$/.test(t)) return true;
+  // Couple of sentences: 2 or fewer, and short (≤150 chars)
+  const sentences = t.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean);
+  return sentences.length <= 2 && t.length <= 150;
+}
+
+function parseRowsForPosts(
+  rows: unknown[][],
+  sheetName: string
+): LinkedInPostRow[] {
   if (!rows?.length) return [];
   const headerInfo = findHeaderRow(rows);
   const headers = headerInfo?.headers ?? rows[0].map((c) => String(c ?? "").trim());
   const dataStartRow = headerInfo ? headerInfo.rowIndex + 1 : 1;
 
   const impressionsCol = findColumnContains(headers, ["impression"]) ?? findColumn(headers, IMPRESSIONS_COL_ALIASES);
+  const engagementsCol = findColumnContains(headers, ["engagement"]) ?? findColumn(headers, ENGAGEMENTS_COL_ALIASES);
   if (!impressionsCol) return [];
 
   const impressionsIdx = impressionsCol.index;
   const dateCol = findColumnContains(headers, ["post publish date", "publish date", "date"]) ?? findColumn(headers, DATE_COL_ALIASES);
   const postUrlCol = findColumnContains(headers, ["post url", "url"]) ?? findColumn(headers, POST_COL_ALIASES);
+  const contentCol = findColumnForPostContent(headers, impressionsIdx);
+  const contentTypeCol =
+    findColumnContains(headers, ["content type", "post type"]) ??
+    findColumn(headers, ["content type", "type", "post type"]);
 
   const dateIdx = Math.max(
     0,
@@ -216,27 +364,55 @@ function parseRowsForPosts(rows: unknown[][], sheetName: string): LinkedInPostRo
       ? postUrlCol.index
       : impressionsIdx - 2
   );
+  const contentIdx = contentCol?.index ?? urlIdx;
 
   const result: LinkedInPostRow[] = [];
   for (let i = dataStartRow; i < rows.length; i++) {
     const row = rows[i];
     const dateVal = row?.[dateIdx];
-    const date = parseDate(dateVal);
-    if (!date) continue;
+    const parsed = parseDateTime(dateVal);
+    if (!parsed) continue;
+    const { date, dateTime } = parsed;
 
     const impressions = parseNumber(row?.[impressionsIdx]);
     if (impressions < 0) continue;
 
-    const urlOrContent = String(row?.[urlIdx] ?? "").trim();
-    const activityId = extractActivityId(urlOrContent);
-    const postId = activityId ?? simpleHash(urlOrContent + date);
-    const postContent = urlOrContent || undefined;
+    const engagements = engagementsCol
+      ? parseNumber(row?.[engagementsCol.index])
+      : undefined;
+
+    const urlVal = String(row?.[urlIdx] ?? "").trim();
+    const contentVal = String(row?.[contentIdx] ?? "").trim();
+    const activityId = extractActivityId(urlVal);
+    const postId = activityId ?? simpleHash((contentVal || urlVal) + date);
+    const postContent = getPostDisplayName(contentVal, urlVal);
+    const postUrl = isUrlLike(urlVal) ? urlVal : undefined;
+
+    const fromSheet = isCommentFromSheet(sheetName);
+    const fromType =
+      contentTypeCol && isCommentFromType(row?.[contentTypeCol.index]);
+    const fromRepostType =
+      contentTypeCol && isRepostFromType(row?.[contentTypeCol.index]);
+    const fromRepostContent = isRepostFromContent(postContent || contentVal);
+    const fromLikelyRepostContent = isLikelyRepostFromContent(postContent || contentVal);
+    const contentType: LinkedInContentType =
+      fromSheet || fromType
+        ? "comment"
+        : fromRepostType || fromRepostContent
+          ? "repost"
+          : fromLikelyRepostContent
+            ? "likely_repost"
+            : "post";
 
     result.push({
       postId,
       date,
+      dateTime,
       impressions,
-      postContent: postContent || `Post ${activityId ?? postId}`,
+      engagements: engagements ?? undefined,
+      postContent: postContent || (activityId ? `Post ${activityId}` : `Post ${date}`),
+      postUrl,
+      contentType,
     });
   }
   return result;
@@ -324,9 +500,12 @@ export function parseLinkedInWorkbook(sheets: { name: string; rows: unknown[][] 
     if (sheetNameMatches(name, SHEET_NAMES_ENGAGEMENT)) {
       const parsed = parseRowsForDailyImpressions(rows);
       if (parsed.length) dailyImpressions = parsed;
-    } else if (sheetNameMatches(name, SHEET_NAMES_TOP_POSTS)) {
+    } else if (
+      sheetNameMatches(name, SHEET_NAMES_TOP_POSTS) ||
+      sheetNameMatches(name, SHEET_NAMES_COMMENTS)
+    ) {
       const parsed = parseRowsForPosts(rows, name);
-      if (parsed.length) posts = mergeLinkedInPosts([], parsed);
+      if (parsed.length) posts = mergeLinkedInPosts(posts, parsed);
     } else if (sheetNameMatches(name, SHEET_NAMES_FOLLOWERS)) {
       const followers = parseRowsForFollowers(rows);
       for (const [date, count] of followers) {
@@ -348,13 +527,16 @@ export function parseLinkedInWorkbook(sheets: { name: string; rows: unknown[][] 
 }
 
 /** Build posts-by-date map from TOP POSTS for hover tooltips */
-function postsByDateMap(posts: LinkedInPostRow[]): Map<string, Array<{ content: string; impressions: number }>> {
-  const map = new Map<string, Array<{ content: string; impressions: number }>>();
+function postsByDateMap(
+  posts: LinkedInPostRow[]
+): Map<string, Array<{ content: string; impressions: number; contentType?: LinkedInContentType }>> {
+  const map = new Map<string, Array<{ content: string; impressions: number; contentType?: LinkedInContentType }>>();
   for (const p of posts) {
     const existing = map.get(p.date) ?? [];
     existing.push({
       content: p.postContent ?? "—",
       impressions: p.impressions,
+      contentType: p.contentType,
     });
     map.set(p.date, existing);
   }
@@ -400,6 +582,7 @@ export function buildDailyMetrics(
       postsOnDate: datePosts?.map((p) => ({
         content: p.content.length > 80 ? p.content.slice(0, 80) + "…" : p.content,
         impressions: p.impressions,
+        contentType: p.contentType,
       })),
     };
   });

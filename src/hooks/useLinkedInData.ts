@@ -11,6 +11,7 @@ import {
   loadLinkedInData,
   mergeAndSave,
   clearLinkedInData,
+  updatePostContentType,
 } from "@/lib/linkedinStorage";
 import type { PlatformMetrics } from "@/types/social";
 
@@ -111,6 +112,15 @@ export function useLinkedInData() {
     setPendingImport(null);
   }, []);
 
+  const confirmRepost = useCallback(
+    async (postId: string) => {
+      const ok = await updatePostContentType(postId, "repost");
+      if (ok) await refreshFromStorage();
+      return ok;
+    },
+    [refreshFromStorage]
+  );
+
   const clear = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -134,6 +144,7 @@ export function useLinkedInData() {
     handleFile,
     approveImport,
     rejectImport,
+    confirmRepost,
     clear,
     refreshFromStorage,
   };

@@ -3,6 +3,7 @@ export type Platform = "linkedin" | "twitter" | "youtube";
 export interface PostOnDate {
   content: string;
   impressions: number;
+  contentType?: "post" | "comment" | "repost" | "likely_repost";
 }
 
 export interface DailyMetrics {

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { SocialPerformanceChart } from "@/components/SocialPerformanceChart";
+import { LinkedInPostsChart } from "@/components/LinkedInPostsChart";
 import { LinkedInUpload } from "@/components/LinkedInUpload";
 import { LinkedInImportPreview } from "@/components/LinkedInImportPreview";
 import { YouTubeUpload } from "@/components/YouTubeUpload";
@@ -30,6 +31,7 @@ export default function Home() {
     handleFile,
     approveImport,
     rejectImport,
+    confirmRepost,
     clear,
   } = useLinkedInData();
 
@@ -223,13 +225,24 @@ export default function Home() {
       )}
 
       {linkedInData.length > 0 && (
-        <div className="mb-10">
-          <SocialPerformanceChart
-            data={linkedInData}
-            platform="linkedin"
-            title="LinkedIn — Follower Growth & Cumulative Impressions"
-          />
-        </div>
+        <>
+          <div className="mb-10">
+            <SocialPerformanceChart
+              data={linkedInData}
+              platform="linkedin"
+              title="LinkedIn — Follower Growth & Cumulative Impressions"
+            />
+          </div>
+          {stored?.posts && stored.posts.length > 0 && (
+            <div className="mb-10">
+              <LinkedInPostsChart
+                posts={stored.posts}
+                followersByDate={stored.followersByDate ?? []}
+                onConfirmRepost={confirmRepost}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {youtubeData.length > 0 && (
