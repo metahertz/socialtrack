@@ -111,29 +111,44 @@ export default function PublicProfilePage({
     return { min: sorted[0], max: sorted[sorted.length - 1] };
   }, [data?.linkedIn]);
 
+  const profileDateLimits = useMemo(() => {
+    const from = data?.dateFrom ?? "";
+    const to = data?.dateTo ?? "";
+    if (!from || !to) return null;
+    return { min: from, max: to };
+  }, [data?.dateFrom, data?.dateTo]);
+
+  const effectiveDateBounds = useMemo(() => {
+    if (!linkedInDateBounds) return null;
+    if (!profileDateLimits) return linkedInDateBounds;
+    return profileDateLimits;
+  }, [linkedInDateBounds, profileDateLimits]);
+
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
   useEffect(() => {
-    if (!linkedInDateBounds) return;
+    if (!effectiveDateBounds) return;
+    const profileFrom = profileDateLimits?.min ?? effectiveDateBounds.min;
+    const profileTo = profileDateLimits?.max ?? effectiveDateBounds.max;
     setDateFrom((prev) => {
-      if (!prev || prev < linkedInDateBounds.min || prev > linkedInDateBounds.max)
-        return linkedInDateBounds.min;
+      if (!prev || prev < effectiveDateBounds.min || prev > effectiveDateBounds.max)
+        return profileFrom;
       return prev;
     });
     setDateTo((prev) => {
-      if (!prev || prev < linkedInDateBounds.min || prev > linkedInDateBounds.max)
-        return linkedInDateBounds.max;
+      if (!prev || prev < effectiveDateBounds.min || prev > effectiveDateBounds.max)
+        return profileTo;
       return prev;
     });
-  }, [linkedInDateBounds]);
+  }, [effectiveDateBounds, profileDateLimits]);
 
   const linkedInDateFilter = useMemo(() => {
-    if (!linkedInDateBounds || !dateFrom || !dateTo) return null;
-    const from = dateFrom >= linkedInDateBounds.min ? dateFrom : linkedInDateBounds.min;
-    const to = dateTo <= linkedInDateBounds.max ? dateTo : linkedInDateBounds.max;
+    if (!effectiveDateBounds || !dateFrom || !dateTo) return null;
+    const from = dateFrom >= effectiveDateBounds.min ? dateFrom : effectiveDateBounds.min;
+    const to = dateTo <= effectiveDateBounds.max ? dateTo : effectiveDateBounds.max;
     return { from, to };
-  }, [linkedInDateBounds, dateFrom, dateTo]);
+  }, [effectiveDateBounds, dateFrom, dateTo]);
 
   const linkedInData =
     linkedInDateFilter && linkedInDataRaw.length > 0
@@ -221,7 +236,7 @@ export default function PublicProfilePage({
         </div>
       )}
 
-      {linkedInDataRaw.length > 0 && linkedInDateBounds && (
+      {linkedInDataRaw.length > 0 && effectiveDateBounds && (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-chart-dark-grid/50 bg-chart-dark/40 px-4 py-3">
             <span className="text-sm font-medium text-chart-green">
@@ -232,8 +247,8 @@ export default function PublicProfilePage({
               <input
                 type="date"
                 value={dateFrom}
-                min={linkedInDateBounds.min}
-                max={dateTo || linkedInDateBounds.max}
+                min={effectiveDateBounds.min}
+                max={dateTo || effectiveDateBounds.max}
                 onChange={(e) => setDateFrom(e.target.value)}
                 className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green focus:border-chart-green focus:outline-none focus:ring-1 focus:ring-chart-green"
               />
@@ -243,14 +258,14 @@ export default function PublicProfilePage({
               <input
                 type="date"
                 value={dateTo}
-                min={dateFrom || linkedInDateBounds.min}
-                max={linkedInDateBounds.max}
+                min={dateFrom || effectiveDateBounds.min}
+                max={effectiveDateBounds.max}
                 onChange={(e) => setDateTo(e.target.value)}
                 className="rounded border border-chart-dark-grid bg-chart-dark-card px-2 py-1.5 text-chart-green focus:border-chart-green focus:outline-none focus:ring-1 focus:ring-chart-green"
               />
             </label>
             <span className="text-xs text-chart-green/60">
-              {linkedInDateBounds.min} – {linkedInDateBounds.max}
+              {effectiveDateBounds.min} – {effectiveDateBounds.max}
             </span>
           </div>
           <div className="mb-10">
